@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>点菜小程序</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 日历视图 -->
+    <div v-if="currentView === 'calendar'" class="calendar-view">
+      <div class="header">
+        <h1>📅 点菜日历</h1>
+      </div>
+
+      <div class="calendar-controls">
+        <button @click="prevMonth" class="btn-nav">◀</button>
+        <div class="current-month">
+          <select v-model="currentYear" @change="changeMonth" class="year-select">
+            <option v-for="year in years" :key="year" :value="year">{{ year }}年</option>
+          </select>
+          <select v-model="currentMonth" @change="changeMonth" class="month-select">
+            <option v-for="month in 12" :key="month" :value="month">{{ month }}月</option>
+          </select>
+        </div>
+        <button @click="nextMonth" class="btn-nav">▶</button>
+      </div>
+
+      <div class="calendar-grid">
+        <div class="weekday" v-for="day in weekdays" :key="day">{{ day }}</div>
+        <div
+          v-for="day in calendarDays"
+          :key="day.key"
+          :class="['calendar-day', {
+            'other-month': !day.isCurrentMonth,
+            'today': day.isToday,
+            'has-order': day.hasOrder
+          }]"
+          @click="selectDate(day)"
+        >
+          <div class="day-number">{{ day.day }}</div>
+          <div v-if="day.hasOrder" class="day-dishes">
+            <div v-for="(dish, index) in day.dishes.slice(0, 2)" :key="index" class="dish-preview">
+              {{ dish }}
+            </div>
+            <div v-if="day.dishes.length > 2" class="more-dishes">+{{ day.dishes.length - 2 }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 点菜视图 -->
+    <div v-if="currentView === 'ordering'" class="ordering-view">
+      <div class="header">
+        <button @click="cancelOrdering" class="btn-back">← 返回</button>
+        <h2>{{ selectedDate }}</h2>
+      </div>
+
+      <div class="menu-section">
+        <div v-for="category in menuCategories" :key="category.name" class="category">
+          <h3 class="category-title">{{ category.icon }} {{ category.name }}</h3>
+          <div class="dishes-list">
+            <div
+              v-for="dish in category.dishes"
+              :key="dish"
+              :class="['dish-item', { 'selected': isSelected(dish) }]"
+              @click="toggleDish(dish)"
+            >
+              <span class="dish-name">{{ dish }}</span>
+              <span v-if="isSelected(dish)" class="check-mark">✓</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="selected-dishes-panel">
+        <h3>已选菜品 ({{ selectedDishes.length }})</h3>
+        <div class="selected-list">
+          <div v-for="(dish, index) in selectedDishes" :key="index" class="selected-dish">
+            <span>{{ dish }}</span>
+            <button @click="removeDish(index)" class="btn-remove">×</button>
+          </div>
+          <div v-if="selectedDishes.length === 0" class="empty-hint">还没有选择菜品</div>
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button @click="cancelOrdering" class="btn-cancel">取消</button>
+        <button @click="confirmOrder" class="btn-confirm" :disabled="selectedDishes.length === 0">
+          确认 ({{ selectedDishes.length }})
+        </button>
+      </div>
+    </div>
+
+    <!-- 查看详情视图 -->
+    <div v-if="currentView === 'detail'" class="detail-view">
+      <div class="header">
+        <button @click="backToCalendar" class="btn-back">← 返回</button>
+        <h2>{{ selectedDate }}</h2>
+      </div>
+
+      <div class="detail-content">
+        <h3>📋 当日菜单</h3>
+        <div v-if="viewingOrder && viewingOrder.length > 0" class="detail-dishes">
+          <div v-for="(dish, index) in viewingOrder" :key="index" class="detail-dish">
+            <span class="dish-number">{{ index + 1 }}</span>
+            <span class="dish-name">{{ dish }}</span>
+          </div>
+        </div>
+        <div v-else class="empty-hint">该日期还没有点菜记录</div>
+
+        <div class="detail-actions">
+          <button @click="editOrder" class="btn-edit">编辑</button>
+          <button v-if="viewingOrder && viewingOrder.length > 0" @click="deleteOrder" class="btn-delete">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 加载提示 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner">加载中...</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+  <!-- LocalStorage版本 - 支持单机或通过云存储扩展 -->
+  <script src="app-standalone.js"></script>
+</body>
+</html>

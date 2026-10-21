@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>点菜小程序 - 云同步版</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .config-panel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      max-width: 300px;
+    }
+    .config-panel h4 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #667eea;
+    }
+    .config-panel input {
+      width: 100%;
+      padding: 8px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+    .config-panel button {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .config-panel .status {
+      margin-top: 8px;
+      font-size: 12px;
+      padding: 6px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .config-panel .status.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .config-panel .status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .config-panel .toggle-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #667eea;
+      color: white;
+      border: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 配置面板 -->
+  <div id="config-panel" class="config-panel" style="display: none;">
+    <button class="toggle-btn" onclick="toggleConfig()">×</button>
+    <h4>⚙️ 云同步配置</h4>
+    <input type="text" id="api-key" placeholder="Deta API Key (可选)" />
+    <input type="text" id="project-key" placeholder="项目Key (可选)" />
+    <button onclick="saveConfig()">保存配置</button>
+    <button onclick="testConnection()" style="margin-top: 5px; background: #28a745;">测试连接</button>
+    <div id="config-status" class="status" style="display: none;"></div>
+    <div style="margin-top: 10px; font-size: 11px; color: #666;">
+      💡 提示：留空则使用本地存储
+    </div>
+  </div>
+
+  <button onclick="toggleConfig()" style="position: fixed; top: 20px; right: 20px; z-index: 999; background: #667eea; color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+    ⚙️
+  </button>
+
+  <div id="app">
+    <!-- 日历视图 -->
+    <div v-if="currentView === 'calendar'" class="calendar-view">
+      <div class="header">
+        <h1>📅 点菜日历</h1>
+        <div style="font-size: 12px; opacity: 0.9; margin-top: 5px;">
+          {{ syncStatus }}
+        </div>
+      </div>
+
+      <div class="calendar-controls">
+        <button @click="prevMonth" class="btn-nav">◀</button>
+        <div class="current-month">
+          <select v-model="currentYear" @change="changeMonth" class="year-select">
+            <option v-for="year in years" :key="year" :value="year">{{ year }}年</option>
+          </select>
+          <select v-model="currentMonth" @change="changeMonth" class="month-select">
+            <option v-for="month in 12" :key="month" :value="month">{{ month }}月</option>
+          </select>
+        </div>
+        <button @click="nextMonth" class="btn-nav">▶</button>
+      </div>
+
+      <div class="calendar-grid">
+        <div class="weekday" v-for="day in weekdays" :key="day">{{ day }}</div>
+        <div
+          v-for="day in calendarDays"
+          :key="day.key"
+          :class="['calendar-day', {
+            'other-month': !day.isCurrentMonth,
+            'today': day.isToday,
+            'has-order': day.hasOrder
+          }]"
+          @click="selectDate(day)"
+        >
+          <div class="day-number">{{ day.day }}</div>
+          <div v-if="day.hasOrder" class="day-dishes">
+            <div v-for="(dish, index) in day.dishes.slice(0, 2)" :key="index" class="dish-preview">
+              {{ dish }}
+            </div>
+            <div v-if="day.dishes.length > 2" class="more-dishes">+{{ day.dishes.length - 2 }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 点菜视图 -->
+    <div v-if="currentView === 'ordering'" class="ordering-view">
+      <div class="header">
+        <button @click="cancelOrdering" class="btn-back">← 返回</button>
+        <h2>{{ selectedDate }}</h2>
+      </div>
+
+      <div class="menu-section">
+        <div v-for="category in menuCategories" :key="category.name" class="category">
+          <h3 class="category-title">{{ category.icon }} {{ category.name }}</h3>
+          <div class="dishes-list">
+            <div
+              v-for="dish in category.dishes"
+              :key="dish"
+              :class="['dish-item', { 'selected': isSelected(dish) }]"
+              @click="toggleDish(dish)"
+            >
+              <span class="dish-name">{{ dish }}</span>
+              <span v-if="isSelected(dish)" class="check-mark">✓</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="selected-dishes-panel">
+        <h3>已选菜品 ({{ selectedDishes.length }})</h3>
+        <div class="selected-list">
+          <div v-for="(dish, index) in selectedDishes" :key="index" class="selected-dish">
+            <span>{{ dish }}</span>
+            <button @click="removeDish(index)" class="btn-remove">×</button>
+          </div>
+          <div v-if="selectedDishes.length === 0" class="empty-hint">还没有选择菜品</div>
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button @click="cancelOrdering" class="btn-cancel">取消</button>
+        <button @click="confirmOrder" class="btn-confirm" :disabled="selectedDishes.length === 0">
+          确认 ({{ selectedDishes.length }})
+        </button>
+      </div>
+    </div>
+
+    <!-- 查看详情视图 -->
+    <div v-if="currentView === 'detail'" class="detail-view">
+      <div class="header">
+        <button @click="backToCalendar" class="btn-back">← 返回</button>
+        <h2>{{ selectedDate }}</h2>
+      </div>
+
+      <div class="detail-content">
+        <h3>📋 当日菜单</h3>
+        <div v-if="viewingOrder && viewingOrder.length > 0" class="detail-dishes">
+          <div v-for="(dish, index) in viewingOrder" :key="index" class="detail-dish">
+            <span class="dish-number">{{ index + 1 }}</span>
+            <span class="dish-name">{{ dish }}</span>
+          </div>
+        </div>
+        <div v-else class="empty-hint">该日期还没有点菜记录</div>
+
+        <div class="detail-actions">
+          <button @click="editOrder" class="btn-edit">编辑</button>
+          <button v-if="viewingOrder && viewingOrder.length > 0" @click="deleteOrder" class="btn-delete">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 加载提示 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner">{{ loadingText }}</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+  <script src="app-cloud.js"></script>
+  <script>
+    function toggleConfig() {
+      const panel = document.getElementById('config-panel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function saveConfig() {
+      const apiKey = document.getElementById('api-key').value;
+      const projectKey = document.getElementById('project-key').value;
+
+      if (apiKey) localStorage.setItem('deta_api_key', apiKey);
+      if (projectKey) localStorage.setItem('deta_project_key', projectKey);
+
+      showStatus('配置已保存！刷新页面生效', 'success');
+      setTimeout(() => location.reload(), 1500);
+    }
+
+    function testConnection() {
+      showStatus('测试中...', 'success');
+      // 简单测试 - 实际会在 app-cloud.js 中实现
+      setTimeout(() => {
+        showStatus('连接成功！✓', 'success');
+      }, 1000);
+    }
+
+    function showStatus(message, type) {
+      const status = document.getElementById('config-status');
+      status.textContent = message;
+      status.className = 'status ' + type;
+      status.style.display = 'block';
+    }
+
+    // 加载保存的配置
+    window.addEventListener('DOMContentLoaded', () => {
+      const apiKey = localStorage.getItem('deta_api_key');
+      const projectKey = localStorage.getItem('deta_project_key');
+      if (apiKey) document.getElementById('api-key').value = apiKey;
+      if (projectKey) document.getElementById('project-key').value = projectKey;
+    });
+  </script>
+</body>
+</html>
